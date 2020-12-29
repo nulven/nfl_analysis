@@ -7,7 +7,7 @@ import scipy.stats as stats
 from sim import sim
 
 
-with open('plays.csv', newline='') as f:
+with open('plays/reg_pbp_2019.csv', newline='') as f:
     data = pd.read_csv(f, low_memory=False)
 
 
