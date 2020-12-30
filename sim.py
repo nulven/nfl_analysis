@@ -4,7 +4,13 @@ import matplotlib.pyplot as plt
 
 plays = []
 
-def sim(params):
+def sim(params, drives):
+    score = 0
+    for _ in range(drives):
+        score += sim_drive(params)
+    return score
+
+def sim_drive(params):
     drive = True
     down = 1
     los = 25.0

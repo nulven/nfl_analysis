@@ -3,18 +3,23 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+import sim
+import plays
+
+
 data = None
 games = None
 teams = None
 current = None
 records = None
 
-def import_data(year = 2019):
+def import_data(year=2019):
     global data
     global games
     global teams
     global current
     global records
+    global ypp
     with open('games/reg_games_%s.csv' % (year), newline='') as f:
         data = pd.read_csv(f, low_memory=False)
 
@@ -23,6 +28,7 @@ def import_data(year = 2019):
     teams = set(data['home_team'])
     current = {team: (0, 0, 0) for team in teams}
     records = {team: [(0, 0, 0)]*18 for team in teams}
+    ypp = plays.ypp(year)
 
 
 def compute_records(data):
@@ -126,13 +132,8 @@ def evaluate(games, strategy, weeks=range(1, 18), print_games=False, print_misse
 
     return (hits, misses, ties), diffs
 
-# strategies
-def record_strategy(home, away):
-    '''pick best record
 
-    pick home team if tied
-    '''
-    return away if percent(current[away]) > percent(current[home]) else home
+
 
 def sum_records(records):
     res = [(0, 0, 0)]*17
@@ -143,40 +144,97 @@ def sum_records(records):
             res[week] = (w+record[0], l+record[1], t+record[2])
     return res
 
-res = []
-res_diffs = []
-for year in range(2009, 2020):
-    import_data(year)
-    compute_records(data)
-    season = []
-    for i in range(1, 18):
-        rec, diffs = evaluate(games, record_strategy, range(i, i+1), print_misses=True)
-        res_diffs.extend(diffs)
-        season.append(percent(rec))
-        res.append(season)
-        # print(format_record(rec))
-        # print(percent(rec))
-plt.hist(res_diffs, bins=np.arange(0, 10, 1))
-plt.xticks(np.arange(0, 10, 1))
+def sum_records_season(records):
+    res = []
+    for season in records:
+        rec = (0, 0, 0)
+        for week in season:
+            w, l, t = week
+            rec = (rec[0]+w, rec[1]+l, rec[2]+t)
+        res.append(rec)
+    return res
 
 
-# res_perc = [percent(rec) for rec in sum_records(res)]
+
+def rolling_average(weeks):
+    def inner(lst):
+        res = []
+        for _ in range(len(lst)+1-weeks):
+            res.append(sum(lst[_:_+weeks])/weeks)
+        return res
+    return inner
 
 
-x = []
-y = []
-for i in range(len(res[0])):
-    week = []
-    for season in res:
-        week.append(season[i])
-    x.append(i+1)
-    y.append(np.median(week))
+def color_gen():
+    i = 0
+    colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
+    while True:
+        yield colors[i]
+        i += 1
+        if i == len(colors):
+            i = 0
 
-#plt.plot(x, y)
+def plot(strategies=[], seasons=range(2009, 2020), weeks=range(1, 18), join=list, print_games=False, print_misses=False):
+    gen = color_gen()
+    for strategy in strategies:
+        res = []
+        res_diffs = []
+        for year in seasons:
+            import_data(year)
+            compute_records(data)
+            season = []
+            for i in weeks:
+                rec, diffs = evaluate(games, strategy, range(i, i+1), print_games=print_games, print_misses=print_misses)
+                res_diffs.extend(diffs)
+                season.append(rec)
+            res.append(season)
+        # plt.hist(res_diffs, bins=np.arange(0, 10, 1))
+        # plt.xticks(np.arange(0, 10, 1))
 
-'''
-for season in res:
-    plt.plot(range(1, 18), season)
-'''
+        x = []
+        y = []
+        for i in range(len(res[0])):
+            week = []
+            for season in res:
+                week.append(percent(season[i]))
+            x.append(i+1)
+            y.append(join(week))
 
-plt.show()
+        averages = [percent(_) for _ in sum_records_season(res)]
+
+        color = next(gen)
+        plt.plot(x, y, label=strategy.__name__, color=color)
+        plt.axhline(y=join(averages), label=strategy.__name__ + ' season', color=color)
+
+    plt.legend()
+    plt.show()
+
+
+##############
+# strategies #
+##############
+def record_strategy(home, away):
+    '''pick best record
+
+    pick home team if tied
+    '''
+    return away if percent(current[away]) > percent(current[home]) else home
+
+def final_record_strategy(home, away):
+    '''pick best eoy record
+
+    pick home team if tied
+    '''
+    return away if percent(records[away][-1]) > percent(records[home][-1]) else home
+
+def ypp_strategy(home, away):
+    return away if ypp[away]['ypp'] > ypp[home]['ypp'] else home
+
+def ypp_sim_strategy(home, away):
+    drives = 1000
+    home_score = sim.sim(ypp[home]['dist'], drives)
+    away_score = sim.sim(ypp[away]['dist'], drives)
+    return away if away_score > home_score else home
+
+
+plot([ypp_sim_strategy], seasons=range(2019, 2020), weeks=range(3, 4), join=np.mean, print_games=False)
